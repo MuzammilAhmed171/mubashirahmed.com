@@ -1,0 +1,2828 @@
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronLeftIcon, GlobeIcon, MoveToBottomIcon, MoveToTopIcon, StarIcon, SOCIAL_ICON_MAP } from "../components/Icons";
+import {
+  uid,
+  type AboutContent,
+  type ContactItem,
+  type HeroContent,
+  type Project,
+  type Review,
+  type SiteSettings,
+  type Testimonial,
+  type StatItem,
+  type ServiceItem,
+  type CtaContent,
+  type SocialLink,
+  type SocialPlatform,
+  type FaqItem,
+  DEFAULT_FAQS,
+  type ExperienceItem,
+  type CertificationItem,
+  DEFAULT_EXPERIENCES,
+  DEFAULT_CERTIFICATIONS,
+  DEFAULT_SECTION_ORDER,
+  SECTION_METADATA,
+  type SectionId,
+} from "../data";
+import { api, apiEnabled } from "../lib/api";
+import { useContent } from "../store/content";
+import {
+  DeleteButton,
+  ImagePicker,
+  OtpModal,
+  PairsEditor,
+  ParagraphsEditor,
+  PasswordInput,
+  RangeSlider,
+  ResumePicker,
+  SaveBar,
+  SelectInput,
+  SkillsEditor,
+  TechStackPicker,
+  TextArea,
+  TextInput,
+  Toggle,
+  VideoPicker,
+  VisibilityToggle,
+  useToast,
+} from "./controls";
+
+function BackToList({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-white hover:text-white"
+    >
+      <ChevronLeftIcon className="h-3.5 w-3.5" />
+      Back to list
+    </button>
+  );
+}
+
+/* Reusable reorder buttons component - compact icon-only design */
+function ReorderButtons({
+  index,
+  total,
+  onMove,
+}: {
+  index: number;
+  total: number;
+  onMove: (direction: "top" | "up" | "down" | "bottom") => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onMove("top")}
+        disabled={index === 0}
+        title="Move to top"
+        className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 text-gray-400 transition-all hover:bg-accent hover:text-black disabled:opacity-30 disabled:hover:bg-white/10 disabled:hover:text-gray-400"
+      >
+        <MoveToTopIcon className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => onMove("up")}
+        disabled={index === 0}
+        title="Move up"
+        className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 text-gray-400 transition-all hover:bg-accent hover:text-black disabled:opacity-30 disabled:hover:bg-white/10 disabled:hover:text-gray-400"
+      >
+        <ArrowUpIcon className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => onMove("down")}
+        disabled={index === total - 1}
+        title="Move down"
+        className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 text-gray-400 transition-all hover:bg-accent hover:text-black disabled:opacity-30 disabled:hover:bg-white/10 disabled:hover:text-gray-400"
+      >
+        <ArrowDownIcon className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => onMove("bottom")}
+        disabled={index === total - 1}
+        title="Move to bottom"
+        className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 text-gray-400 transition-all hover:bg-accent hover:text-black disabled:opacity-30 disabled:hover:bg-white/10 disabled:hover:text-gray-400"
+      >
+        <MoveToBottomIcon className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+const ICON_OPTIONS = [
+  { value: "signpost", label: "Signpost (Address)" },
+  { value: "phone", label: "Phone" },
+  { value: "plane", label: "Paper Plane (Email)" },
+  { value: "globe", label: "Globe (Resume / Web)" },
+];
+
+const RATING_OPTIONS = [5, 4, 3, 2, 1].map((n) => ({ value: String(n), label: `${n} star${n > 1 ? "s" : ""}` }));
+
+const initialsOf = (name: string) =>
+  name.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "??";
+
+/* ------------------------------------------------------------------ */
+/*  Dashboard                                                          */
+/* ------------------------------------------------------------------ */
+
+export function DashboardTab() {
+  const { content, updateSection, refreshFromServer } = useContent();
+  const toast = useToast();
+
+  useEffect(() => {
+    if (apiEnabled) refreshFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const messages = content.messages;
+  const unread = messages.filter((m) => !m.read).length;
+  const avg = content.reviews.length
+    ? (content.reviews.reduce((s, r) => s + r.rating, 0) / content.reviews.length).toFixed(1)
+    : "0.0";
+
+  const stats = [
+    { label: "Total Projects", value: String(content.projects.length) },
+    { label: "Top / Pinned", value: String(content.projects.filter((p) => p.featured).length) },
+    { label: "Avg. Rating", value: avg },
+    { label: "Testimonials", value: String(content.testimonials.length) },
+    { label: "New Messages", value: String(unread), accent: unread > 0 },
+  ];
+
+  const toggleRead = (id: string) => updateSection("messages", messages.map((m) => (m.id === id ? { ...m, read: !m.read } : m)));
+  const markAllRead = () => {
+    updateSection("messages", messages.map((m) => ({ ...m, read: true })));
+    toast("All messages marked as read");
+  };
+  const removeMessage = (id: string) => {
+    updateSection("messages", messages.filter((m) => m.id !== id));
+    toast("Message deleted");
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {stats.map((s) => (
+          <div key={s.label} className={`rounded-lg border p-4 transition-colors ${s.accent ? "border-accent/50 bg-accent/10" : "border-white/10 bg-white/[0.02]"}`}>
+            <p className={`font-display text-2xl font-extrabold ${s.accent ? "text-accent" : "text-white"}`}>{s.value}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-10">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-display text-lg font-bold text-white">
+            Contact Form Messages <span className="ml-1 text-sm font-medium text-gray-500">({messages.length})</span>
+          </h2>
+          {unread > 0 ? (
+            <button onClick={markAllRead} className="rounded-full border border-accent/50 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-accent transition-colors hover:bg-accent hover:text-black">
+              Mark all read
+            </button>
+          ) : null}
+        </div>
+
+        {messages.length === 0 ? (
+          <div className="mt-5 rounded-lg border border-dashed border-white/15 p-10 text-center">
+            <p className="font-display text-sm font-semibold text-gray-400">No messages yet</p>
+            <p className="mt-1.5 text-xs text-gray-600">
+              When someone submits the contact form on your website, their message will appear here instantly.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-3">
+            {messages.map((m) => (
+              <article key={m.id} className={`rounded-lg border p-5 transition-colors ${m.read ? "border-white/10 bg-white/[0.02]" : "border-accent/40 bg-accent/[0.05]"}`}>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {!m.read ? <span className="rounded-full bg-accent px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-black">New</span> : null}
+                  <p className="font-display text-sm font-bold text-white">{m.name}</p>
+                  <a href={`mailto:${m.email}`} className="text-xs text-accent underline decoration-accent/40 underline-offset-4 hover:text-yellow-300">
+                    {m.email}
+                  </a>
+                  <span className="ml-auto text-[11px] text-gray-600">
+                    {new Date(m.date).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <p className="mt-2.5 text-sm font-semibold text-gray-300">{m.subject}</p>
+                <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-gray-400">{m.message}</p>
+                <div className="mt-4 flex items-center gap-2.5">
+                  <button onClick={() => toggleRead(m.id)} className="rounded-full border border-white/15 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent">
+                    {m.read ? "Mark unread" : "Mark read"}
+                  </button>
+                  <a href={`mailto:${m.email}?subject=Re: ${encodeURIComponent(m.subject)}`} className="rounded-full bg-accent px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-black transition-colors hover:bg-yellow-300">
+                    Reply
+                  </a>
+                  <span className="ml-auto">
+                    <DeleteButton small onDelete={() => removeMessage(m.id)} />
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Hero                                                               */
+/* ------------------------------------------------------------------ */
+
+export function HeroTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [draft, setDraft] = useState<HeroContent>(content.hero);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(content.hero);
+  const set = <K extends keyof HeroContent>(k: K, v: HeroContent[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
+  return (
+    <div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <TextInput label="Greeting" value={draft.greeting} onChange={(v) => set("greeting", v)} />
+        <TextInput label="Name intro" value={draft.nameIntro} onChange={(v) => set("nameIntro", v)} hint="Shown before the name, e.g. I'm" />
+        <TextInput label="Your name (yellow)" value={draft.name} onChange={(v) => set("name", v)} />
+        <TextInput label="Role (Line 1)" value={draft.roleLine1} onChange={(v) => set("roleLine1", v)} />
+      </div>
+      <div className="mt-5">
+        <TextInput label="Role (Line 2)" value={draft.roleLine2} onChange={(v) => set("roleLine2", v)} />
+      </div>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        <TextInput label="Button text" value={draft.buttonText} onChange={(v) => set("buttonText", v)} />
+        <TextInput label="Button link" value={draft.buttonLink} onChange={(v) => set("buttonLink", v)} hint="e.g. #projects" />
+      </div>
+      <div className="mt-5">
+        <TextInput label="Rotating badge text" value={draft.orbitText} onChange={(v) => set("orbitText", v)} hint="The circular rotating text on the right side of the hero." />
+      </div>
+      <div className="mt-5">
+        <TextInput
+          label="Static arc text (top, does not rotate)"
+          value={draft.staticArcText ?? ""}
+          onChange={(v) => set("staticArcText", v)}
+          hint="Stationary text in the upper arc above the rotating badge. Use • as separator."
+        />
+      </div>
+      <div className="mt-5">
+        <RangeSlider
+          label="Arc gap (radius)"
+          value={draft.staticArcRadius ?? 104}
+          onChange={(v) => set("staticArcRadius", v)}
+          min={80}
+          max={120}
+          step={2}
+          hint="Controls how far the static arc text sits from the centre. Smaller = closer, larger = further out."
+        />
+      </div>
+      <SaveBar dirty={dirty} onSave={() => { updateSection("hero", draft); toast("Hero section updated"); }} onDiscard={() => setDraft(content.hero)} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  About                                                              */
+/* ------------------------------------------------------------------ */
+
+export function AboutTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [draft, setDraft] = useState<AboutContent>(content.about);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(content.about);
+  const set = <K extends keyof AboutContent>(k: K, v: AboutContent[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
+  return (
+    <div className="space-y-6">
+      <ImagePicker label="Profile picture" value={draft.profileImage} onChange={(v) => set("profileImage", v)} hint="Shown in the yellow offset circle." />
+      <TextInput label="Headline" value={draft.headline} onChange={(v) => set("headline", v)} hint="Wrap any words in [x]…[/x] to highlight them in yellow." />
+      <ParagraphsEditor label="Bio paragraphs" items={draft.bioParagraphs} onChange={(v) => set("bioParagraphs", v)} />
+      <PairsEditor label="Basic info list" items={draft.basicInfo} onChange={(v) => set("basicInfo", v)} addLabel="Add info row" />
+      <SkillsEditor label="Skill bars" items={draft.skills} onChange={(v) => set("skills", v)} />
+      <PairsEditor label="Info grid (Profile / Education / …)" items={draft.infoGrid} onChange={(v) => set("infoGrid", v)} addLabel="Add grid item" />
+      <div className="grid gap-5 sm:grid-cols-3">
+        <TextInput label="Stat number" value={draft.statNumber} onChange={(v) => set("statNumber", v)} hint='e.g. "30+"' />
+        <TextInput label="Stat label" value={draft.statLabel} onChange={(v) => set("statLabel", v)} />
+        <TextInput label="Button text" value={draft.buttonText} onChange={(v) => set("buttonText", v)} />
+      </div>
+      <SaveBar dirty={dirty} onSave={() => { updateSection("about", draft); toast("About section updated"); }} onDiscard={() => setDraft(content.about)} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Projects                                                           */
+/* ------------------------------------------------------------------ */
+
+const newProject = (): Project => ({
+  id: uid(),
+  title: "",
+  gallery: [],
+  liveUrl: "https://",
+  description: "",
+  stack: [],
+  featured: false,
+});
+
+function ProjectForm({ project, onSave, onCancel }: { project: Project; onSave: (p: Project) => void; onCancel: () => void }) {
+  const [draft, setDraft] = useState<Project>(project);
+  const [stackText, setStackText] = useState(project.stack.join(", "));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(project) || stackText !== project.stack.join(", ");
+
+  const moveImage = (i: number, dir: -1 | 1) => {
+    const g = [...draft.gallery];
+    const j = i + dir;
+    if (j < 0 || j >= g.length) return;
+    [g[i], g[j]] = [g[j], g[i]];
+    setDraft((d) => ({ ...d, gallery: g }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="font-display text-lg font-bold text-white">{project.title ? `Edit: ${project.title}` : "New Project"}</h2>
+        <BackToList onClick={onCancel} />
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <TextInput label="Project title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
+        <TextInput label="Live demo URL" value={draft.liveUrl} onChange={(v) => setDraft((d) => ({ ...d, liveUrl: v }))} />
+      </div>
+      <TextArea label="Description" value={draft.description} onChange={(v) => setDraft((d) => ({ ...d, description: v }))} rows={3} />
+      <TextInput label="Tech stack (comma separated)" value={stackText} onChange={setStackText} hint='e.g. "React.js, Node.js, MongoDB"' />
+      <TechStackPicker value={stackText} onChange={setStackText} />
+      <Toggle label="Pin as Top Project" hint="Pinned projects appear in the highlighted Top Projects area." checked={!!draft.featured} onChange={(v) => setDraft((d) => ({ ...d, featured: v }))} />
+
+      <div>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
+          Screenshots ({draft.gallery.length}). First one is the card thumbnail
+        </p>
+        <div className="space-y-4">
+          {draft.gallery.map((img, i) => (
+            <div key={i} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-400">
+                  Screenshot {i + 1} {i === 0 ? <span className="ml-1 text-accent">(thumbnail)</span> : null}
+                </span>
+                <div className="flex gap-2">
+                  <button onClick={() => moveImage(i, -1)} disabled={i === 0} className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-gray-400 transition-colors enabled:hover:border-accent enabled:hover:text-accent disabled:opacity-30">
+                    <ArrowUpIcon className="h-3 w-3" />
+                    Up
+                  </button>
+                  <button onClick={() => moveImage(i, 1)} disabled={i === draft.gallery.length - 1} className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1 text-[10px] font-bold text-gray-400 transition-colors enabled:hover:border-accent enabled:hover:text-accent disabled:opacity-30">
+                    <ArrowDownIcon className="h-3 w-3" />
+                    Down
+                  </button>
+                  <button onClick={() => setDraft((d) => ({ ...d, gallery: d.gallery.filter((_, idx) => idx !== i) }))} className="rounded-md border border-red-400/40 px-2.5 py-1 text-[10px] font-bold text-red-400 transition-colors hover:bg-red-400/10">
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <ImagePicker label="" value={img} onChange={(v) => setDraft((d) => ({ ...d, gallery: d.gallery.map((x, idx) => (idx === i ? v : x)) }))} />
+            </div>
+          ))}
+          <button onClick={() => setDraft((d) => ({ ...d, gallery: [...d.gallery, ""] }))} className="inline-flex items-center gap-2 rounded-full border border-dashed border-white/25 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent">
+            <span className="text-sm leading-none">+</span> Add screenshot
+          </button>
+        </div>
+      </div>
+
+      <SaveBar
+        dirty={dirty}
+        onSave={() => onSave({ ...draft, stack: stackText.split(",").map((s) => s.trim()).filter(Boolean), gallery: draft.gallery.filter(Boolean) })}
+        onDiscard={() => { setDraft(project); setStackText(project.stack.join(", ")); }}
+      />
+    </div>
+  );
+}
+
+export function ProjectsTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [editing, setEditing] = useState<Project | null>(null);
+  const projects = content.projects;
+
+  const save = (p: Project) => {
+    if (!p.title.trim()) { toast("Project title is required", "err"); return; }
+    if (p.gallery.length === 0) { toast("Add at least one screenshot", "err"); return; }
+    const exists = projects.some((x) => x.id === p.id);
+    updateSection("projects", exists ? projects.map((x) => (x.id === p.id ? p : x)) : [p, ...projects]);
+    setEditing(null);
+    toast(exists ? "Project updated" : "Project added to website");
+  };
+
+  const remove = (id: string) => {
+    updateSection("projects", projects.filter((p) => p.id !== id));
+    toast("Project deleted");
+  };
+
+  const togglePin = (id: string) =>
+    updateSection("projects", projects.map((p) => (p.id === id ? { ...p, featured: !p.featured } : p)));
+
+  const toggleVisibility = (id: string) => {
+    const target = projects.find((p) => p.id === id);
+    updateSection("projects", projects.map((p) => (p.id === id ? { ...p, hidden: !p.hidden } : p)));
+    toast(target?.hidden ? "Project is now visible on the website" : "Project hidden from the website");
+  };
+
+  const moveProject = (id: string, direction: "up" | "down" | "top" | "bottom", section: "pinned" | "unpinned") => {
+    // Get projects for this specific section
+    const sectionProjects = projects.filter((p) =>
+      section === "pinned" ? p.featured : !p.featured
+    );
+
+    const index = sectionProjects.findIndex((p) => p.id === id);
+    if (index === -1) return;
+
+    // Reorder within section
+    const reorderedSection = [...sectionProjects];
+    const [project] = reorderedSection.splice(index, 1);
+
+    switch (direction) {
+      case "up":
+        if (index > 0) reorderedSection.splice(index - 1, 0, project);
+        else reorderedSection.unshift(project);
+        break;
+      case "down":
+        if (index < reorderedSection.length) reorderedSection.splice(index + 1, 0, project);
+        else reorderedSection.push(project);
+        break;
+      case "top":
+        reorderedSection.unshift(project);
+        break;
+      case "bottom":
+        reorderedSection.push(project);
+        break;
+    }
+
+    // Rebuild full projects array maintaining section order
+    const otherSection = projects.filter((p) =>
+      section === "pinned" ? !p.featured : p.featured
+    );
+
+    const newProjects = section === "pinned"
+      ? [...reorderedSection, ...otherSection]
+      : [...otherSection, ...reorderedSection];
+
+    updateSection("projects", newProjects);
+    toast(`Project moved ${direction}`);
+  };
+
+  if (editing) return <ProjectForm project={editing} onSave={save} onCancel={() => setEditing(null)} />;
+
+  // Split projects into pinned and unpinned sections
+  const pinnedProjects = projects.filter((p) => p.featured);
+  const unpinnedProjects = projects.filter((p) => !p.featured);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-gray-500">
+          <span className="font-bold text-white">{projects.length}</span> projects ·{" "}
+          <span className="font-bold text-accent">{pinnedProjects.length}</span> pinned as Top Projects
+        </p>
+        <button onClick={() => setEditing(newProject())} className="rounded-full bg-accent px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300 hover:shadow-[0_8px_28px_rgba(255,193,7,0.35)]">
+          + Add Project
+        </button>
+      </div>
+
+      {/* Pinned Projects Section */}
+      {pinnedProjects.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <StarIcon className="h-4 w-4 text-accent" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-accent">
+              Pinned Projects ({pinnedProjects.length})
+            </h3>
+          </div>
+          <div className="space-y-4">
+            {pinnedProjects.map((p, idx) => (
+              <article
+                key={p.id}
+                className={`rounded-lg border p-4 transition-all space-y-4 ${
+                  p.hidden ? "opacity-50 grayscale" : ""
+                } border-accent/40 bg-accent/[0.05]`}
+              >
+                {/* Main row: Thumbnail, Title/Details, Action buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <img
+                      src={p.gallery[0]}
+                      alt=""
+                      className="h-14 w-20 shrink-0 rounded-md border border-white/10 object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 font-display text-sm font-bold text-white">
+                        <span className="truncate">{p.title || "(untitled)"}</span>
+                        <StarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+                        {p.hidden ? (
+                          <span className="shrink-0 rounded-full border border-white/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-500">
+                            Hidden
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-gray-500">
+                        {p.gallery.length} screenshots · {p.stack.slice(0, 4).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Top-right action buttons */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => togglePin(p.id!)}
+                      className="rounded-full border border-accent bg-accent px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-black transition-colors hover:bg-yellow-300"
+                    >
+                      ★ Pinned
+                    </button>
+                    <VisibilityToggle small hidden={!!p.hidden} onToggle={() => toggleVisibility(p.id!)} />
+                    <button
+                      onClick={() => setEditing({ ...p })}
+                      className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent"
+                    >
+                      Edit
+                    </button>
+                    <DeleteButton small onDelete={() => remove(p.id!)} />
+                  </div>
+                </div>
+
+                {/* Bottom Row: Reorder Buttons Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                    <span>Position:</span>
+                    <span className="text-gray-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[10px]">#{idx + 1}</span>
+                  </span>
+                  <ReorderButtons
+                    index={idx}
+                    total={pinnedProjects.length}
+                    onMove={(direction) => moveProject(p.id!, direction, "pinned")}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Divider */}
+      {pinnedProjects.length > 0 && unpinnedProjects.length > 0 && (
+        <div className="my-8 border-t-2 border-dashed border-white/20"></div>
+      )}
+
+      {/* Unpinned Projects Section */}
+      {unpinnedProjects.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">
+              All Projects ({unpinnedProjects.length})
+            </h3>
+          </div>
+          <div className="space-y-4">
+            {unpinnedProjects.map((p, idx) => (
+              <article
+                key={p.id}
+                className={`rounded-lg border p-4 transition-all space-y-4 ${
+                  p.hidden ? "opacity-50 grayscale" : ""
+                } border-white/10 bg-white/[0.02]`}
+              >
+                {/* Main row: Thumbnail, Title/Details, Action buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <img
+                      src={p.gallery[0]}
+                      alt=""
+                      className="h-14 w-20 shrink-0 rounded-md border border-white/10 object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 font-display text-sm font-bold text-white">
+                        <span className="truncate">{p.title || "(untitled)"}</span>
+                        {p.hidden ? (
+                          <span className="shrink-0 rounded-full border border-white/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-500">
+                            Hidden
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-gray-500">
+                        {p.gallery.length} screenshots · {p.stack.slice(0, 4).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Top-right action buttons */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => togglePin(p.id!)}
+                      className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent"
+                    >
+                      Pin to Top
+                    </button>
+                    <VisibilityToggle small hidden={!!p.hidden} onToggle={() => toggleVisibility(p.id!)} />
+                    <button
+                      onClick={() => setEditing({ ...p })}
+                      className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent"
+                    >
+                      Edit
+                    </button>
+                    <DeleteButton small onDelete={() => remove(p.id!)} />
+                  </div>
+                </div>
+
+                {/* Bottom Row: Reorder Buttons Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                    <span>Position:</span>
+                    <span className="text-gray-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[10px]">#{idx + 1}</span>
+                  </span>
+                  <ReorderButtons
+                    index={idx}
+                    total={unpinnedProjects.length}
+                    onMove={(direction) => moveProject(p.id!, direction, "unpinned")}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="mt-6 rounded-lg border border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-gray-500">
+        Layout is count-safe: 1 pinned project shows as a large spotlight card, 2 as a two-column row, and 3+ as a
+        three-column grid, so pinning any number of projects never breaks the design.
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reviews                                                            */
+/* ------------------------------------------------------------------ */
+
+const emptyReview = (): Review => ({
+  id: uid(),
+  name: "",
+  role: "",
+  platform: "Upwork",
+  rating: 5,
+  text: "",
+  when: "Just now",
+  photo: "",
+  initials: "",
+});
+
+function ReviewForm({ review, onSave, onCancel }: { review: Review; onSave: (r: Review) => void; onCancel: () => void }) {
+  const [draft, setDraft] = useState<Review>(review);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(review);
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="font-display text-lg font-bold text-white">{review.name ? `Edit: ${review.name}` : "New Review"}</h2>
+        <BackToList onClick={onCancel} />
+      </div>
+      <ImagePicker label="Client photo" value={draft.photo} onChange={(v) => setDraft((d) => ({ ...d, photo: v }))} />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <TextInput label="Client name" value={draft.name} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} />
+        <TextInput label="Role / company" value={draft.role} onChange={(v) => setDraft((d) => ({ ...d, role: v }))} />
+        <TextInput label="Platform" value={draft.platform} onChange={(v) => setDraft((d) => ({ ...d, platform: v }))} hint="Upwork, Fiverr, Google…" />
+        <SelectInput label="Rating" value={String(draft.rating)} onChange={(v) => setDraft((d) => ({ ...d, rating: Number(v) }))} options={RATING_OPTIONS} />
+      </div>
+      <TextArea label="Review text" value={draft.text} onChange={(v) => setDraft((d) => ({ ...d, text: v }))} rows={3} />
+      <TextInput label="When" value={draft.when} onChange={(v) => setDraft((d) => ({ ...d, when: v }))} hint='e.g. "2 weeks ago"' />
+      <SaveBar dirty={dirty} onSave={() => onSave(draft)} onDiscard={() => setDraft(review)} />
+    </div>
+  );
+}
+
+export function ReviewsTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [editing, setEditing] = useState<Review | null>(null);
+  const reviews = content.reviews;
+
+  const toggleVisibility = (id: string) => {
+    const target = reviews.find((r) => r.id === id);
+    updateSection("reviews", reviews.map((r) => (r.id === id ? { ...r, hidden: !r.hidden } : r)));
+    toast(target?.hidden ? "Review is now visible on the website" : "Review hidden from the website");
+  };
+
+  const save = (r: Review) => {
+    if (!r.name.trim() || !r.text.trim()) { toast("Client name and review text are required", "err"); return; }
+    const withInitials = { ...r, initials: initialsOf(r.name) };
+    const exists = reviews.some((x) => x.id === r.id);
+    updateSection("reviews", exists ? reviews.map((x) => (x.id === r.id ? withInitials : x)) : [withInitials, ...reviews]);
+    setEditing(null);
+    toast(exists ? "Review updated" : "Review added");
+  };
+
+  const moveReview = (id: string, direction: "up" | "down" | "top" | "bottom") => {
+    const index = reviews.findIndex((r) => r.id === id);
+    if (index === -1) return;
+
+    const reordered = [...reviews];
+    const [review] = reordered.splice(index, 1);
+
+    switch (direction) {
+      case "up":
+        if (index > 0) reordered.splice(index - 1, 0, review);
+        else reordered.unshift(review);
+        break;
+      case "down":
+        if (index < reordered.length) reordered.splice(index + 1, 0, review);
+        else reordered.push(review);
+        break;
+      case "top":
+        reordered.unshift(review);
+        break;
+      case "bottom":
+        reordered.push(review);
+        break;
+    }
+
+    updateSection("reviews", reordered);
+    toast(`Review moved ${direction}`);
+  };
+
+  if (editing) return <ReviewForm review={editing} onSave={save} onCancel={() => setEditing(null)} />;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-gray-500">
+          <span className="font-bold text-white">{reviews.length}</span> reviews. The average rating on the site updates automatically.
+        </p>
+        <button onClick={() => setEditing(emptyReview())} className="rounded-full bg-accent px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300">
+          + Add Review
+        </button>
+      </div>
+
+      <div className="mt-6 space-y-4">
+        {reviews.map((r, idx) => (
+          <article key={r.id} className={`rounded-lg border bg-white/[0.02] p-4 transition-all space-y-3 ${r.hidden ? "border-white/10 opacity-50 grayscale" : "border-white/10"}`}>
+            <div className="flex flex-wrap items-center gap-4 sm:flex-nowrap">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent/40 bg-neutral-900">
+                {r.photo ? <img src={r.photo} alt="" className="h-full w-full object-cover" /> : <span className="font-display text-xs font-bold text-accent">{r.initials || initialsOf(r.name)}</span>}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 font-display text-sm font-bold text-white">
+                  <span className="truncate">{r.name || "(unnamed)"}</span>
+                  {r.hidden ? <span className="shrink-0 rounded-full border border-white/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-500">Hidden</span> : null}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-gray-500">{r.platform} · {r.when}</p>
+                <span className="mt-1 flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <StarIcon key={n} className={`h-3 w-3 ${n <= r.rating ? "text-accent" : "text-gray-700"}`} />
+                  ))}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <VisibilityToggle small hidden={!!r.hidden} onToggle={() => toggleVisibility(r.id!)} />
+                <button onClick={() => setEditing({ ...r })} className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent">
+                  Edit
+                </button>
+                <DeleteButton small onDelete={() => { updateSection("reviews", reviews.filter((x) => x.id !== r.id)); toast("Review deleted"); }} />
+              </div>
+            </div>
+            {/* Reorder Buttons */}
+            <div className="flex items-center justify-between border-t border-white/10 pt-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                <span>Position:</span>
+                <span className="text-gray-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[10px]">#{idx + 1}</span>
+              </span>
+              <ReorderButtons
+                index={idx}
+                total={reviews.length}
+                onMove={(direction) => moveReview(r.id!, direction)}
+              />
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Testimonials                                                       */
+/* ------------------------------------------------------------------ */
+
+const emptyTestimonial = (): Testimonial => ({
+  id: uid(),
+  name: "",
+  role: "",
+  project: "",
+  quote: "",
+  rating: 5,
+  duration: "0:30",
+  video: "",
+  initials: "",
+});
+
+function TestimonialForm({ testimonial, onSave, onCancel }: { testimonial: Testimonial; onSave: (t: Testimonial) => void; onCancel: () => void }) {
+  const [draft, setDraft] = useState<Testimonial>(testimonial);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(testimonial);
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="font-display text-lg font-bold text-white">{testimonial.name ? `Edit: ${testimonial.name}` : "New Testimonial"}</h2>
+        <BackToList onClick={onCancel} />
+      </div>
+      <VideoPicker label="Client video" value={draft.video} onChange={(v) => setDraft((d) => ({ ...d, video: v }))} />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <TextInput label="Client name" value={draft.name} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} />
+        <TextInput label="Role / company" value={draft.role} onChange={(v) => setDraft((d) => ({ ...d, role: v }))} />
+        <TextInput label="Project" value={draft.project} onChange={(v) => setDraft((d) => ({ ...d, project: v }))} />
+        <TextInput label="Duration label" value={draft.duration} onChange={(v) => setDraft((d) => ({ ...d, duration: v }))} hint='Shown on the thumbnail, e.g. "0:42"' />
+        <SelectInput label="Rating" value={String(draft.rating)} onChange={(v) => setDraft((d) => ({ ...d, rating: Number(v) }))} options={RATING_OPTIONS} />
+      </div>
+      <TextArea label="Quote (shown under the video)" value={draft.quote} onChange={(v) => setDraft((d) => ({ ...d, quote: v }))} rows={3} />
+      <SaveBar dirty={dirty} onSave={() => onSave(draft)} onDiscard={() => setDraft(testimonial)} />
+    </div>
+  );
+}
+
+export function TestimonialsTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [editing, setEditing] = useState<Testimonial | null>(null);
+  const testimonials = content.testimonials;
+
+  const toggleVisibility = (id: string) => {
+    const target = testimonials.find((t) => t.id === id);
+    updateSection("testimonials", testimonials.map((t) => (t.id === id ? { ...t, hidden: !t.hidden } : t)));
+    toast(target?.hidden ? "Testimonial is now visible on the website" : "Testimonial hidden from the website");
+  };
+
+  const save = (t: Testimonial) => {
+    if (!t.name.trim() || !t.video.trim()) { toast("Client name and video are required", "err"); return; }
+    const withInitials = { ...t, initials: initialsOf(t.name) };
+    const exists = testimonials.some((x) => x.id === t.id);
+    updateSection("testimonials", exists ? testimonials.map((x) => (x.id === t.id ? withInitials : x)) : [withInitials, ...testimonials]);
+    setEditing(null);
+    toast(exists ? "Testimonial updated" : "Testimonial added");
+  };
+
+  const moveTestimonial = (id: string, direction: "up" | "down" | "top" | "bottom") => {
+    const index = testimonials.findIndex((t) => t.id === id);
+    if (index === -1) return;
+
+    const reordered = [...testimonials];
+    const [testimonial] = reordered.splice(index, 1);
+
+    switch (direction) {
+      case "up":
+        if (index > 0) reordered.splice(index - 1, 0, testimonial);
+        else reordered.unshift(testimonial);
+        break;
+      case "down":
+        if (index < reordered.length) reordered.splice(index + 1, 0, testimonial);
+        else reordered.push(testimonial);
+        break;
+      case "top":
+        reordered.unshift(testimonial);
+        break;
+      case "bottom":
+        reordered.push(testimonial);
+        break;
+    }
+
+    updateSection("testimonials", reordered);
+    toast(`Testimonial moved ${direction}`);
+  };
+
+  if (editing) return <TestimonialForm testimonial={editing} onSave={save} onCancel={() => setEditing(null)} />;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-gray-500">
+          <span className="font-bold text-white">{testimonials.length}</span> video testimonials
+        </p>
+        <button onClick={() => setEditing(emptyTestimonial())} className="rounded-full bg-accent px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300">
+          + Add Testimonial
+        </button>
+      </div>
+
+      <div className="mt-6 space-y-4">
+        {testimonials.map((t, idx) => (
+          <article key={t.id} className={`rounded-lg border bg-white/[0.02] p-4 transition-all space-y-3 ${t.hidden ? "border-white/10 opacity-50 grayscale" : "border-white/10"}`}>
+            <div className="flex flex-wrap items-center gap-4 sm:flex-nowrap">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-neutral-900 font-display text-xs font-bold text-accent">
+                {t.initials || initialsOf(t.name)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 font-display text-sm font-bold text-white">
+                  <span className="truncate">{t.name || "(unnamed)"}</span>
+                  {t.hidden ? <span className="shrink-0 rounded-full border border-white/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-500">Hidden</span> : null}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-gray-500">
+                  {t.project || "(no project)"} · {t.duration} · {t.video ? "video attached ✓" : "no video yet"}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <VisibilityToggle small hidden={!!t.hidden} onToggle={() => toggleVisibility(t.id!)} />
+                <button onClick={() => setEditing({ ...t })} className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent">
+                  Edit
+                </button>
+                <DeleteButton small onDelete={() => { updateSection("testimonials", testimonials.filter((x) => x.id !== t.id)); toast("Testimonial deleted"); }} />
+              </div>
+            </div>
+            {/* Reorder Buttons */}
+            <div className="flex items-center justify-between border-t border-white/10 pt-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                <span>Position:</span>
+                <span className="text-gray-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[10px]">#{idx + 1}</span>
+              </span>
+              <ReorderButtons
+                index={idx}
+                total={testimonials.length}
+                onMove={(direction) => moveTestimonial(t.id!, direction)}
+              />
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Contact info cards                                                 */
+/* ------------------------------------------------------------------ */
+
+export function ContactInfoTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [draft, setDraft] = useState<ContactItem[]>(content.contactItems);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(content.contactItems);
+
+  const update = (i: number, patch: Partial<ContactItem>) => setDraft((d) => d.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+
+  const move = (i: number, direction: "top" | "up" | "down" | "bottom") => {
+    const list = [...draft];
+    const [item] = list.splice(i, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, i - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, i + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setDraft(list);
+  };
+
+  return (
+    <div>
+      <p className="mb-6 rounded-lg border border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-gray-500">
+        These are the four icon cards in the Contact section. <span className="text-gray-300">Link</span> is optional.
+        Use <span className="text-accent">tel:…</span>, <span className="text-accent">mailto:…</span> or any URL.
+      </p>
+      <div className="space-y-5">
+        {draft.map((item, i) => (
+          <div key={i} className="rounded-lg border border-white/10 bg-white/[0.02] p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextInput label="Title" value={item.title} onChange={(v) => update(i, { title: v })} />
+              <SelectInput label="Icon" value={item.icon} onChange={(v) => update(i, { icon: v as ContactItem["icon"] })} options={ICON_OPTIONS} />
+              <TextInput label="Value" value={item.value} onChange={(v) => update(i, { value: v })} />
+              <TextInput label="Link (optional)" value={item.href ?? ""} onChange={(v) => update(i, { href: v || undefined })} />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                <span>Position:</span>
+                <span className="text-gray-300 font-bold bg-white/10 px-2 py-0.5 rounded text-[10px]">#{i + 1}</span>
+              </span>
+              <div className="flex items-center gap-3">
+                <ReorderButtons index={i} total={draft.length} onMove={(dir) => move(i, dir)} />
+                <DeleteButton small label="Remove card" onDelete={() => setDraft((d) => d.filter((_, idx) => idx !== i))} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => setDraft((d) => [...d, { title: "New Card", value: "...", icon: "globe" }])} className="mt-4 inline-flex items-center gap-2 rounded-full border border-dashed border-white/25 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent">
+        <span className="text-sm leading-none">+</span> Add contact card
+      </button>
+      <SaveBar dirty={dirty} onSave={() => { updateSection("contactItems", draft); toast("Contact cards updated"); }} onDiscard={() => setDraft(content.contactItems)} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Settings + Security                                                */
+/* ------------------------------------------------------------------ */
+
+function SecurityCard() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [showOtp, setShowOtp] = useState(false);
+  const [demoCode, setDemoCode] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const start = async () => {
+    setError("");
+    if (!current || !next || !confirm) { setError("Fill in all three password fields."); return; }
+    if (next.length < 6) { setError("New password must be at least 6 characters."); return; }
+    if (next !== confirm) { setError("New passwords do not match."); return; }
+    if (!apiEnabled && current !== content.settings.adminPassword) { setError("Current password is incorrect."); return; }
+    if (apiEnabled) {
+      setBusy(true);
+      try {
+        /* Ask the server to email a real code to the admin address. */
+        await api.auth.requestOtp(content.settings.email);
+        setDemoCode("");
+        setShowOtp(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not send the code.");
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      setDemoCode(String(Math.floor(100000 + Math.random() * 900000)));
+      setShowOtp(true);
+    }
+  };
+
+  /* Backend mode: the OTP modal hands us the typed code and we verify it on the
+     server together with the current + new password. */
+  const verifyRemote = apiEnabled
+    ? async (code: string) => {
+        await api.auth.changePassword(current, code, next);
+      }
+    : undefined;
+
+  const finish = () => {
+    setShowOtp(false);
+    if (!apiEnabled) {
+      updateSection("settings", { ...content.settings, adminPassword: next });
+    }
+    toast("Password changed");
+    setCurrent(""); setNext(""); setConfirm("");
+  };
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-5">
+      <h3 className="font-display text-sm font-bold text-white">Security: Change Password</h3>
+      <p className="mt-1.5 text-xs text-gray-500">
+        {apiEnabled
+          ? "Verified with your current password plus an OTP sent to your admin email."
+          : "Stored in this browser for now. An OTP step verifies it's really you."}
+      </p>
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <PasswordInput label="Current password" value={current} onChange={setCurrent} />
+        <PasswordInput label="New password" value={next} onChange={setNext} hint="Min 6 characters" />
+        <PasswordInput label="Confirm new password" value={confirm} onChange={setConfirm} />
+      </div>
+      {error ? <p className="mt-3 text-xs text-red-400">{error}</p> : null}
+      <button onClick={start} disabled={busy} className="mt-4 rounded-full bg-accent px-6 py-2.5 text-[11px] font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300 hover:shadow-[0_8px_28px_rgba(255,193,7,0.3)] disabled:opacity-60">
+        {busy ? "Saving…" : "Change Password"}
+      </button>
+
+      {showOtp ? (
+        <OtpModal
+          email={content.settings.email}
+          demoCode={demoCode}
+          onClose={() => setShowOtp(false)}
+          onVerified={finish}
+          verifyRemote={verifyRemote}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export function SettingsTab() {
+  const { content, updateSection, resetAll, importContent } = useContent();
+  const toast = useToast();
+  const [draft, setDraft] = useState<SiteSettings>(content.settings);
+  const set = <K extends keyof SiteSettings>(k: K, v: SiteSettings[K]) => setDraft((d) => ({ ...d, [k]: v }));
+  const importRef = useRef<HTMLInputElement>(null);
+
+  /* Exclude fields managed by other tabs (navLinks, sectionOrder, etc.) and password from dirty check */
+  const sanitize = (s: SiteSettings) => {
+    const {
+      adminPassword,
+      navLinks,
+      sectionOrder,
+      sectionVisibility,
+      sectionNames,
+      sectionWatermarks,
+      showExperience,
+      showCertifications,
+      ...rest
+    } = s;
+    return rest;
+  };
+  const dirty = JSON.stringify(sanitize(draft)) !== JSON.stringify(sanitize(content.settings));
+
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(content, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "portfolio-content-backup.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("Backup downloaded");
+  };
+
+  const onImport = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const ok = importContent(String(reader.result));
+      toast(ok ? "Backup imported successfully" : "Invalid backup file", ok ? "ok" : "err");
+    };
+    reader.readAsText(file);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-5 sm:grid-cols-2">
+        <TextInput label="Logo, first word (white)" value={draft.logoFirst} onChange={(v) => set("logoFirst", v)} />
+        <TextInput label="Logo, second word (yellow)" value={draft.logoSecond} onChange={(v) => set("logoSecond", v)} />
+        <TextInput label="Side signature" value={draft.sideSignature} onChange={(v) => set("sideSignature", v)} hint="Vertical text on the left edge of the website." />
+        <TextInput label="Copyright name" value={draft.copyrightName} onChange={(v) => set("copyrightName", v)} />
+        <TextInput label="Direct email" value={draft.email} onChange={(v) => set("email", v)} hint="Used for the direct contact link. Also the email that receives OTP codes." />
+      </div>
+
+      <SecurityCard />
+
+      <ResumePicker label="Resume (PDF)" value={draft.resume} onChange={(v) => set("resume", v)} />
+
+      {/* Footer Settings Card */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+        <div>
+          <h3 className="font-display text-sm font-bold text-white">Footer Content &amp; Details</h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Edit the tagline, quick links heading, and bottom notes shown in the yellow footer.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <TextArea
+              label="Footer Tagline"
+              value={draft.footerTagline ?? "Full Stack Developer, React Native Mobile Engineer & Area Manager crafting clean, scalable digital products."}
+              onChange={(v) => set("footerTagline", v)}
+              rows={2}
+              hint="Shown directly below your name/logo in the footer."
+            />
+          </div>
+          <TextInput
+            label="Quick Links Heading"
+            value={draft.footerQuickLinksTitle ?? "Quick Links"}
+            onChange={(v) => set("footerQuickLinksTitle", v)}
+            hint="Heading above the footer nav links."
+          />
+          <TextInput
+            label="Footer Bottom Note"
+            value={draft.footerBottomNote ?? "Built with ♥ in Pakistan"}
+            onChange={(v) => set("footerBottomNote", v)}
+            hint="Shown on the bottom-right of the footer (leave empty to hide)."
+          />
+        </div>
+      </div>
+
+      <SaveBar
+        dirty={dirty}
+        onSave={() => {
+          /* Keep live navigation, sections and security settings safe */
+          updateSection("settings", {
+            ...content.settings,
+            logoFirst: draft.logoFirst,
+            logoSecond: draft.logoSecond,
+            sideSignature: draft.sideSignature,
+            copyrightName: draft.copyrightName,
+            email: draft.email,
+            resume: draft.resume,
+            footerTagline: draft.footerTagline,
+            footerQuickLinksTitle: draft.footerQuickLinksTitle,
+            footerBottomNote: draft.footerBottomNote,
+            adminPassword: content.settings.adminPassword,
+          });
+          toast("Settings saved");
+        }}
+        onDiscard={() => setDraft(content.settings)}
+      />
+
+      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-5">
+        <h3 className="font-display text-sm font-bold text-white">Backup &amp; Data</h3>
+        <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
+          Export all website content as JSON, or restore from a previous backup file.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button onClick={exportJson} className="rounded-full bg-accent px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-colors hover:bg-yellow-300">
+            Export JSON
+          </button>
+          <input ref={importRef} type="file" accept="application/json" className="hidden" onChange={onImport} />
+          <button onClick={() => importRef.current?.click()} className="rounded-full border border-white/20 px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent">
+            Import JSON
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SERVICE_ICON_OPTIONS = [
+  { value: "code", label: "Code / Development" },
+  { value: "brain", label: "Brain / AI & ML" },
+  { value: "penTool", label: "Pen Tool / UI & UX" },
+  { value: "cloud", label: "Cloud / DevOps" },
+  { value: "mobile", label: "Mobile / Apps" },
+  { value: "chart", label: "Chart / Data Analytics" },
+];
+
+const DEFAULT_NAV_LINKS: { id: string; label: string; hidden?: boolean }[] = [
+  { id: "home", label: "Home" },
+  { id: "about", label: "About" },
+  { id: "experience", label: "Experience" },
+  { id: "projects", label: "Projects" },
+  { id: "certifications", label: "Certifications" },
+  { id: "faq", label: "FAQ" },
+  { id: "contact", label: "Contact" },
+];
+
+const DEFAULT_SECTION_HEADINGS: Record<string, { title: string; watermark: string }> = {
+  hero: { title: "Hero Introduction", watermark: "HERO" },
+  stats: { title: "Stats Banner", watermark: "STATS" },
+  about: { title: "About Me", watermark: "ABOUT" },
+  experience: { title: "Work Experience", watermark: "CAREER" },
+  projects: { title: "Featured Projects", watermark: "WORKS" },
+  services: { title: "Services I Offer", watermark: "What I Do" },
+  certifications: { title: "Certifications & Licenses", watermark: "VERIFIED" },
+  reviews: { title: "Reviews", watermark: "REVIEWS" },
+  testimonials: { title: "Testimonials", watermark: "TESTIMONIALS" },
+  cta: { title: "Let's Build Something Amazing", watermark: "HIRE ME" },
+  faq: { title: "Frequently Asked", watermark: "FAQ" },
+  contact: { title: "Contact Me", watermark: "CONTACT" },
+};
+
+export function SectionsTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+
+  const [stats, setStats] = useState<StatItem[]>(() => content.stats || []);
+  const [services, setServices] = useState<ServiceItem[]>(() => content.services || []);
+  const [cta, setCta] = useState<CtaContent>(
+    () =>
+      content.cta || {
+        badge: "Available for Work",
+        title: "Let's Build Something ",
+        highlight: "Amazing",
+        titleEnd: " Together",
+        description:
+          "Have a project in mind? I turn your vision into reality with clean code, stunning UI, and on-time delivery — every single time.",
+        buttonText: "Start a Project",
+        buttonLink: "#contact",
+        secondaryText: "Or just say hi",
+        secondaryLink: `mailto:${content.settings?.email || "muzammil.ahmed.dev@gmail.com"}`,
+      }
+  );
+
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(
+    () => (content.settings.sectionOrder as SectionId[]) || DEFAULT_SECTION_ORDER
+  );
+  const [showExperience, setShowExperience] = useState<boolean>(content.settings.showExperience !== false);
+  const [showCertifications, setShowCertifications] = useState<boolean>(content.settings.showCertifications !== false);
+
+  /* Navbar Tabs state */
+  const [navLinks, setNavLinks] = useState<{ id: string; label: string; hidden?: boolean }[]>(
+    () => content.settings.navLinks || DEFAULT_NAV_LINKS
+  );
+
+  /* Per-section visibility state */
+  const [sectionVisibility, setSectionVisibility] = useState<Partial<Record<string, boolean>>>(
+    () => content.settings.sectionVisibility || {}
+  );
+
+  /* Section custom heading names & watermark subtitles */
+  const [sectionNames, setSectionNames] = useState<Partial<Record<string, string>>>(
+    () => content.settings.sectionNames || {}
+  );
+  const [sectionWatermarks, setSectionWatermarks] = useState<Partial<Record<string, string>>>(
+    () => content.settings.sectionWatermarks || {}
+  );
+
+  /* Currently expanded section for title/watermark editing */
+  const [editingSecId, setEditingSecId] = useState<string | null>(null);
+
+  const isSecActive = (secId: SectionId) => {
+    if (sectionVisibility[secId] !== undefined) return sectionVisibility[secId] !== false;
+    if (secId === "experience") return showExperience;
+    if (secId === "certifications") return showCertifications;
+    return true;
+  };
+
+  const toggleSecActive = (secId: SectionId) => {
+    const cur = isSecActive(secId);
+    const next = !cur;
+    setSectionVisibility((prev) => ({ ...prev, [secId]: next }));
+    if (secId === "experience") setShowExperience(next);
+    if (secId === "certifications") setShowCertifications(next);
+  };
+
+  const moveNavLink = (idx: number, direction: "top" | "up" | "down" | "bottom") => {
+    const list = [...navLinks];
+    const [item] = list.splice(idx, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, idx - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, idx + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setNavLinks(list);
+  };
+
+  const toggleNavLink = (id: string) => {
+    setNavLinks((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, hidden: !l.hidden } : l))
+    );
+  };
+
+  const updateNavLinkLabel = (id: string, label: string) => {
+    setNavLinks((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, label } : l))
+    );
+  };
+
+  const dirty =
+    JSON.stringify(stats) !== JSON.stringify(content.stats || []) ||
+    JSON.stringify(services) !== JSON.stringify(content.services || []) ||
+    JSON.stringify(cta) !== JSON.stringify(content.cta || {}) ||
+    JSON.stringify(sectionOrder) !== JSON.stringify(content.settings.sectionOrder || DEFAULT_SECTION_ORDER) ||
+    JSON.stringify(navLinks) !== JSON.stringify(content.settings.navLinks || DEFAULT_NAV_LINKS) ||
+    JSON.stringify(sectionVisibility) !== JSON.stringify(content.settings.sectionVisibility || {}) ||
+    JSON.stringify(sectionNames) !== JSON.stringify(content.settings.sectionNames || {}) ||
+    JSON.stringify(sectionWatermarks) !== JSON.stringify(content.settings.sectionWatermarks || {}) ||
+    showExperience !== (content.settings.showExperience !== false) ||
+    showCertifications !== (content.settings.showCertifications !== false);
+
+  const moveStat = (idx: number, direction: "top" | "up" | "down" | "bottom") => {
+    const list = [...stats];
+    const [item] = list.splice(idx, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, idx - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, idx + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setStats(list);
+  };
+
+  const moveService = (idx: number, direction: "top" | "up" | "down" | "bottom") => {
+    const list = [...services];
+    const [item] = list.splice(idx, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, idx - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, idx + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setServices(list);
+  };
+
+  const moveSection = (secId: SectionId, direction: "top" | "up" | "down" | "bottom") => {
+    const list = [...sectionOrder];
+    const idx = list.indexOf(secId);
+    if (idx === -1) return;
+    const [item] = list.splice(idx, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, idx - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, idx + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setSectionOrder(list);
+  };
+
+  const handleSave = () => {
+    updateSection("stats", stats);
+    updateSection("services", services);
+    updateSection("cta", cta);
+    updateSection("settings", {
+      ...content.settings,
+      sectionOrder,
+      navLinks,
+      sectionVisibility,
+      sectionNames,
+      sectionWatermarks,
+      showExperience,
+      showCertifications,
+    });
+    toast("Site layout, sections, navigation & headings saved");
+  };
+
+  const handleDiscard = () => {
+    setStats(content.stats || []);
+    setServices(content.services || []);
+    if (content.cta) setCta(content.cta);
+    setSectionOrder((content.settings.sectionOrder as SectionId[]) || DEFAULT_SECTION_ORDER);
+    setNavLinks(content.settings.navLinks || DEFAULT_NAV_LINKS);
+    setSectionVisibility(content.settings.sectionVisibility || {});
+    setSectionNames(content.settings.sectionNames || {});
+    setSectionWatermarks(content.settings.sectionWatermarks || {});
+    setShowExperience(content.settings.showExperience !== false);
+    setShowCertifications(content.settings.showCertifications !== false);
+    setEditingSecId(null);
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* 1. NAVBAR TABS CONTROL */}
+      <div className="rounded-xl border border-accent/40 bg-accent/[0.04] p-5 shadow-[0_0_30px_rgba(255,193,7,0.04)]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 rounded-full bg-accent animate-pulse" />
+              <h3 className="font-display text-sm font-bold text-white uppercase tracking-wider">
+                Navigation Bar Tabs (Order &amp; Visibility)
+              </h3>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Control the top floating navbar and footer quick links. Reorder positions, toggle tabs active/inactive, or change display labels.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNavLinks(DEFAULT_NAV_LINKS)}
+            className="rounded-full border border-white/20 px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:border-accent hover:text-accent transition-colors"
+          >
+            Reset Default Tabs
+          </button>
+        </div>
+
+        <div className="space-y-2.5">
+          {navLinks.map((link, idx) => {
+            const isHidden = !!link.hidden;
+            return (
+              <div
+                key={link.id}
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5 transition-colors ${
+                  isHidden
+                    ? "border-white/5 bg-black/30 opacity-60"
+                    : "border-white/10 bg-black/60 hover:border-white/20"
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent text-[11px] font-extrabold text-black">
+                    #{idx + 1}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2 flex-1">
+                    <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-mono font-bold text-accent">
+                      #{link.id}
+                    </span>
+                    <input
+                      type="text"
+                      value={link.label}
+                      onChange={(e) => updateNavLinkLabel(link.id, e.target.value)}
+                      placeholder="Tab label"
+                      className="rounded border border-white/15 bg-black/70 px-2.5 py-1 text-xs font-semibold text-white focus:border-accent focus:outline-none"
+                    />
+                    {isHidden && (
+                      <span className="rounded bg-red-500/20 text-red-400 px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider">
+                        Hidden
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleNavLink(link.id)}
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      !isHidden
+                        ? "bg-accent text-black shadow-[0_0_10px_rgba(255,193,7,0.3)]"
+                        : "border border-white/20 text-gray-500 hover:border-white/40 hover:text-white"
+                    }`}
+                  >
+                    {!isHidden ? "● Active" : "○ Inactive (Hidden)"}
+                  </button>
+                  <ReorderButtons
+                    index={idx}
+                    total={navLinks.length}
+                    onMove={(dir) => moveNavLink(idx, dir)}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. HOMEPAGE SECTIONS POSITION, VISIBILITY & HEADINGS */}
+      <div className="rounded-xl border border-white/15 bg-white/[0.02] p-5 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 rounded-full bg-accent" />
+              <h3 className="font-display text-sm font-bold text-white uppercase tracking-wider">
+                All Website Sections (Active/Inactive, Position &amp; Headings)
+              </h3>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Turn any section ON or OFF with a single click. Move sections up or down, or customize their Title and faint Watermark text.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSectionOrder(DEFAULT_SECTION_ORDER);
+              setSectionVisibility({});
+              setSectionNames({});
+              setSectionWatermarks({});
+              setShowExperience(true);
+              setShowCertifications(true);
+            }}
+            className="rounded-full border border-white/20 px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:border-accent hover:text-accent transition-colors"
+          >
+            Reset All Sections
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {sectionOrder.map((secId, idx) => {
+            const meta = SECTION_METADATA[secId] || { label: secId, desc: "" };
+            const active = isSecActive(secId);
+            const defaultHeading = DEFAULT_SECTION_HEADINGS[secId] || { title: meta.label, watermark: secId.toUpperCase() };
+            const customTitle = sectionNames[secId] || "";
+            const customWatermark = sectionWatermarks[secId] || "";
+            const isEditing = editingSecId === secId;
+
+            return (
+              <div
+                key={secId}
+                className={`rounded-xl border transition-all ${
+                  active
+                    ? "border-white/10 bg-black/60 hover:border-white/20"
+                    : "border-white/5 bg-black/30 opacity-60"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-extrabold ${
+                        active ? "bg-accent text-black" : "bg-neutral-800 text-gray-400"
+                      }`}
+                    >
+                      #{idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-display text-sm font-bold text-white flex items-center gap-2">
+                        <span>{customTitle || meta.label}</span>
+                        {!active && (
+                          <span className="rounded bg-red-500/20 text-red-400 px-1.5 py-0.5 text-[9px] uppercase font-bold tracking-widest">
+                            Off (Hidden)
+                          </span>
+                        )}
+                        {customTitle && (
+                          <span className="rounded bg-accent/20 text-accent px-1.5 py-0.5 text-[9px] uppercase font-bold tracking-widest">
+                            Custom Title
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-gray-500 truncate">{meta.desc}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingSecId(isEditing ? null : secId)}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                        isEditing || customTitle || customWatermark
+                          ? "border-accent text-accent bg-accent/10"
+                          : "border-white/20 text-gray-400 hover:text-white hover:border-white/40"
+                      }`}
+                      title="Edit section heading title and background watermark"
+                    >
+                      {isEditing ? "✕ Close" : "✎ Edit Title & Watermark"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleSecActive(secId)}
+                      className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                        active
+                          ? "bg-accent text-black shadow-[0_0_10px_rgba(255,193,7,0.3)]"
+                          : "border border-white/20 text-gray-500 hover:border-white/40 hover:text-white"
+                      }`}
+                    >
+                      {active ? "● Active" : "○ Disabled"}
+                    </button>
+
+                    <ReorderButtons
+                      index={idx}
+                      total={sectionOrder.length}
+                      onMove={(dir) => moveSection(secId, dir)}
+                    />
+                  </div>
+                </div>
+
+                {/* Collapsible Section Title & Watermark Customizer */}
+                {isEditing && (
+                  <div className="border-t border-white/10 bg-black/80 p-4 rounded-b-xl grid gap-4 sm:grid-cols-2 animate-in fade-in duration-200">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-300">
+                        Section Heading Title
+                      </label>
+                      <input
+                        type="text"
+                        value={customTitle}
+                        onChange={(e) =>
+                          setSectionNames((prev) => ({ ...prev, [secId]: e.target.value }))
+                        }
+                        placeholder={defaultHeading.title}
+                        className="w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-xs font-semibold text-white placeholder-gray-600 focus:border-accent focus:outline-none"
+                      />
+                      <p className="mt-1 text-[10px] text-gray-500">
+                        Default: <span className="text-gray-400 font-mono">{defaultHeading.title}</span>
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-gray-300">
+                        Faint Background Watermark Text
+                      </label>
+                      <input
+                        type="text"
+                        value={customWatermark}
+                        onChange={(e) =>
+                          setSectionWatermarks((prev) => ({ ...prev, [secId]: e.target.value.toUpperCase() }))
+                        }
+                        placeholder={defaultHeading.watermark}
+                        className="w-full rounded-lg border border-white/15 bg-neutral-900 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white placeholder-gray-600 focus:border-accent focus:outline-none"
+                      />
+                      <p className="mt-1 text-[10px] text-gray-500">
+                        Default: <span className="text-gray-400 font-mono">{defaultHeading.watermark}</span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. STATS BANNER */}
+      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-5">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-display text-sm font-bold text-white">Stats Banner</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              The metrics displayed across the yellow banner (Experience, Projects, etc.).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStats([...stats, { value: "10+", label: "New Metric" }])}
+            className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 hover:border-accent hover:text-accent"
+          >
+            + Add Stat
+          </button>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {stats.map((item, idx) => (
+            <div key={idx} className="space-y-3 rounded-md border border-white/10 bg-black/40 p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                  Stat #{idx + 1}
+                </span>
+                <div className="flex items-center gap-2">
+                  <ReorderButtons
+                    index={idx}
+                    total={stats.length}
+                    onMove={(dir) => moveStat(idx, dir)}
+                  />
+                  <DeleteButton small onDelete={() => setStats(stats.filter((_, i) => i !== idx))} />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextInput
+                  label="Value"
+                  value={item.value}
+                  onChange={(v) => setStats(stats.map((s, i) => (i === idx ? { ...s, value: v } : s)))}
+                  placeholder="e.g. 40+"
+                />
+                <TextInput
+                  label="Label"
+                  value={item.label}
+                  onChange={(v) => setStats(stats.map((s, i) => (i === idx ? { ...s, label: v } : s)))}
+                  placeholder="e.g. Projects Delivered"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. SERVICES LIST */}
+      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-5">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-display text-sm font-bold text-white">Services Section</h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Manage the services displayed in the yellow &apos;What I Do&apos; strip.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setServices([
+                ...services,
+                {
+                  icon: "code",
+                  num: `0${services.length + 1}`,
+                  title: "New Service",
+                  desc: "Service description here...",
+                },
+              ])
+            }
+            className="rounded-full border border-white/20 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-300 hover:border-accent hover:text-accent"
+          >
+            + Add Service
+          </button>
+        </div>
+        <div className="space-y-4">
+          {services.map((svc, idx) => (
+            <div key={idx} className="space-y-3 rounded-md border border-white/10 bg-black/40 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                  Service #{idx + 1}
+                </span>
+                <div className="flex items-center gap-2">
+                  <ReorderButtons
+                    index={idx}
+                    total={services.length}
+                    onMove={(dir) => moveService(idx, dir)}
+                  />
+                  <DeleteButton small onDelete={() => setServices(services.filter((_, i) => i !== idx))} />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <TextInput
+                  label="Number"
+                  value={svc.num}
+                  onChange={(v) => setServices(services.map((s, i) => (i === idx ? { ...s, num: v } : s)))}
+                  placeholder="01"
+                />
+                <TextInput
+                  label="Title"
+                  value={svc.title}
+                  onChange={(v) => setServices(services.map((s, i) => (i === idx ? { ...s, title: v } : s)))}
+                  placeholder="Service Title"
+                />
+                <SelectInput
+                  label="Icon"
+                  value={svc.icon || "code"}
+                  onChange={(v) => setServices(services.map((s, i) => (i === idx ? { ...s, icon: v } : s)))}
+                  options={SERVICE_ICON_OPTIONS}
+                />
+              </div>
+              <TextArea
+                label="Description"
+                value={svc.desc}
+                onChange={(v) => setServices(services.map((s, i) => (i === idx ? { ...s, desc: v } : s)))}
+                rows={2}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4. CTA BANNER */}
+      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-5">
+        <h3 className="mb-1 font-display text-sm font-bold text-white">Call to Action (CTA) Banner</h3>
+        <p className="mb-4 text-xs text-gray-400">
+          Bottom banner with the HIRE ME background and contact button.
+        </p>
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label="Badge Text"
+              value={cta.badge}
+              onChange={(v) => setCta({ ...cta, badge: v })}
+              placeholder="Available for Work"
+            />
+            <TextInput
+              label="Title Prefix"
+              value={cta.title}
+              onChange={(v) => setCta({ ...cta, title: v })}
+              placeholder="Let's Build Something "
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label="Highlighted Word"
+              value={cta.highlight}
+              onChange={(v) => setCta({ ...cta, highlight: v })}
+              placeholder="Amazing"
+              hint="Rendered with black underline accent."
+            />
+            <TextInput
+              label="Title Suffix"
+              value={cta.titleEnd}
+              onChange={(v) => setCta({ ...cta, titleEnd: v })}
+              placeholder=" Together"
+            />
+          </div>
+          <TextArea
+            label="Description"
+            value={cta.description}
+            onChange={(v) => setCta({ ...cta, description: v })}
+            rows={2}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label="Primary Button Text"
+              value={cta.buttonText}
+              onChange={(v) => setCta({ ...cta, buttonText: v })}
+              placeholder="Start a Project"
+            />
+            <TextInput
+              label="Primary Button Link"
+              value={cta.buttonLink}
+              onChange={(v) => setCta({ ...cta, buttonLink: v })}
+              placeholder="#contact"
+            />
+            <TextInput
+              label="Secondary Action Text"
+              value={cta.secondaryText}
+              onChange={(v) => setCta({ ...cta, secondaryText: v })}
+              placeholder="Or just say hi"
+            />
+            <TextInput
+              label="Secondary Action Link"
+              value={cta.secondaryLink}
+              onChange={(v) => setCta({ ...cta, secondaryLink: v })}
+              placeholder="mailto:..."
+            />
+          </div>
+        </div>
+      </div>
+
+      <SaveBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} />
+    </div>
+  );
+}
+
+
+
+/* ================================================================== */
+/*  SocialLinksTab                                                     */
+/* ================================================================== */
+
+import React from "react";
+
+const PLATFORM_OPTIONS: { value: SocialPlatform; label: string }[] = [
+  { value: "github",    label: "GitHub" },
+  { value: "linkedin",  label: "LinkedIn" },
+  { value: "upwork",    label: "Upwork" },
+  { value: "fiverr",    label: "Fiverr" },
+  { value: "twitter",   label: "Twitter / X" },
+  { value: "instagram", label: "Instagram" },
+  { value: "facebook",  label: "Facebook" },
+  { value: "youtube",   label: "YouTube" },
+  { value: "whatsapp",  label: "WhatsApp" },
+  { value: "mail",      label: "Email (mailto:)" },
+  { value: "globe",     label: "Other / Custom" },
+];
+
+export function SocialLinksTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+
+  const [draft, setDraft] = useState<SocialLink[]>(content.socials ?? []);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(content.socials ?? []);
+
+  useEffect(() => {
+    setDraft(content.socials ?? []);
+  }, [content.socials]);
+
+  const set = (id: string, patch: Partial<SocialLink>) =>
+    setDraft((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+
+  const add = () =>
+    setDraft((prev) => [
+      ...prev,
+      { id: uid(), platform: "globe" as SocialPlatform, label: "New Link", url: "https://", active: false },
+    ]);
+
+  const remove = (id: string) => setDraft((prev) => prev.filter((s) => s.id !== id));
+
+  const move = (id: string, dir: "up" | "down") => {
+    setDraft((prev) => {
+      const idx = prev.findIndex((s) => s.id === id);
+      if (idx < 0) return prev;
+      const next = [...prev];
+      const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= next.length) return prev;
+      [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+      return next;
+    });
+  };
+
+  const handleSave = () => {
+    updateSection("socials", draft);
+    toast("Social links saved \u2713");
+  };
+
+  const handleDiscard = () => {
+    setDraft(content.socials ?? []);
+    toast("Changes discarded");
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header info */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <h2 className="font-display text-base font-bold text-white">Social Links Manager</h2>
+        <p className="mt-1 text-xs text-gray-400">
+          Toggle links <span className="font-semibold text-accent">active</span> to show them in both the{" "}
+          <span className="font-semibold text-white">floating side dock</span> and the{" "}
+          <span className="font-semibold text-white">footer</span>. Inactive links are hidden from visitors.
+        </p>
+      </div>
+
+      {/* Social link cards */}
+      <div className="space-y-3">
+        {draft.map((item, idx) => {
+          const Icon = (SOCIAL_ICON_MAP as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>)[item.platform] ?? GlobeIcon;
+          return (
+            <div
+              key={item.id}
+              className={`rounded-xl border bg-white/[0.02] p-4 transition-all duration-200 ${
+                item.active
+                  ? "border-accent/40 shadow-[0_0_18px_rgba(255,193,7,0.06)]"
+                  : "border-white/10 opacity-70"
+              }`}
+            >
+              <div className="flex flex-wrap items-start gap-3">
+                {/* Icon preview */}
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors duration-200 ${
+                    item.active
+                      ? "border-accent/50 bg-accent/10 text-accent"
+                      : "border-white/10 bg-white/5 text-gray-500"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                </div>
+
+                {/* Fields */}
+                <div className="min-w-0 flex-1 space-y-2.5">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    {/* Platform selector */}
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                        Platform
+                      </label>
+                      <select
+                        value={item.platform}
+                        onChange={(e) => set(item.id, { platform: e.target.value as SocialPlatform })}
+                        className="w-full rounded-md border border-white/10 bg-neutral-900 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-accent"
+                      >
+                        {PLATFORM_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Label */}
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                        Tooltip Label
+                      </label>
+                      <input
+                        type="text"
+                        value={item.label}
+                        onChange={(e) => set(item.id, { label: e.target.value })}
+                        placeholder="e.g. GitHub"
+                        className="w-full rounded-md border border-white/10 bg-neutral-900 px-3 py-2 text-sm text-white placeholder-gray-600 outline-none transition-colors focus:border-accent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* URL */}
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                      URL / Link
+                    </label>
+                    <input
+                      type="text"
+                      value={item.url}
+                      onChange={(e) => set(item.id, { url: e.target.value })}
+                      placeholder="https://... or mailto:..."
+                      className="w-full rounded-md border border-white/10 bg-neutral-900 px-3 py-2 text-sm text-white placeholder-gray-600 outline-none transition-colors focus:border-accent"
+                    />
+                  </div>
+                </div>
+
+                {/* Right controls */}
+                <div className="flex flex-col items-end gap-2">
+                  {/* Active toggle */}
+                  <button
+                    type="button"
+                    onClick={() => set(item.id, { active: !item.active })}
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                      item.active
+                        ? "bg-accent text-black shadow-[0_0_10px_rgba(255,193,7,0.4)]"
+                        : "border border-white/15 text-gray-400 hover:border-white/40 hover:text-white"
+                    }`}
+                  >
+                    {item.active ? "\u25cf Active" : "\u25cb Hidden"}
+                  </button>
+
+                  {/* Reorder */}
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      disabled={idx === 0}
+                      onClick={() => move(item.id, "up")}
+                      title="Move up"
+                      className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 text-gray-400 transition-all hover:bg-accent hover:text-black disabled:opacity-30"
+                    >
+                      <ArrowUpIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={idx === draft.length - 1}
+                      onClick={() => move(item.id, "down")}
+                      title="Move down"
+                      className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 text-gray-400 transition-all hover:bg-accent hover:text-black disabled:opacity-30"
+                    >
+                      <ArrowDownIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Delete */}
+                  <DeleteButton onDelete={() => remove(item.id)} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add new link */}
+      <button
+        type="button"
+        onClick={add}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 py-3 text-sm font-semibold text-gray-400 transition-all hover:border-accent/50 hover:text-accent"
+      >
+        <span className="text-lg leading-none">+</span>
+        Add Social Link
+      </button>
+
+      <SaveBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} />
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  FaqTab                                                            */
+/* ================================================================== */
+
+export function FaqTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+
+  const currentFaqs = content.faqs && content.faqs.length > 0 ? content.faqs : DEFAULT_FAQS;
+  const [draft, setDraft] = useState<FaqItem[]>(currentFaqs);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(currentFaqs);
+
+  useEffect(() => {
+    setDraft(content.faqs && content.faqs.length > 0 ? content.faqs : DEFAULT_FAQS);
+  }, [content.faqs]);
+
+  const updateItem = (id: string, patch: Partial<FaqItem>) => {
+    setDraft((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  };
+
+  const addItem = () => {
+    const newItem: FaqItem = {
+      id: uid(),
+      q: "New Question?",
+      a: "Detailed answer goes here.",
+      category: "General",
+      active: true,
+    };
+    setDraft((prev) => [...prev, newItem]);
+    setExpandedId(newItem.id);
+    toast("Added new FAQ item");
+  };
+
+  const removeItem = (id: string) => {
+    setDraft((prev) => prev.filter((item) => item.id !== id));
+    toast("Question removed");
+  };
+
+  const moveItem = (id: string, direction: "top" | "up" | "down" | "bottom") => {
+    setDraft((prev) => {
+      const idx = prev.findIndex((item) => item.id === id);
+      if (idx === -1) return prev;
+      const reordered = [...prev];
+      const item = reordered.splice(idx, 1)[0];
+      switch (direction) {
+        case "top":
+          reordered.unshift(item);
+          break;
+        case "bottom":
+          reordered.push(item);
+          break;
+        case "up":
+          reordered.splice(Math.max(0, idx - 1), 0, item);
+          break;
+        case "down":
+          reordered.splice(Math.min(reordered.length, idx + 1), 0, item);
+          break;
+      }
+      return reordered;
+    });
+  };
+
+  const handleSave = () => {
+    updateSection("faqs", draft);
+    toast("FAQ questions saved ✓");
+  };
+
+  const handleDiscard = () => {
+    setDraft(currentFaqs);
+    toast("Changes discarded");
+  };
+
+  const filtered = search.trim()
+    ? draft.filter(
+        (f) =>
+          f.q.toLowerCase().includes(search.toLowerCase()) ||
+          f.a.toLowerCase().includes(search.toLowerCase()) ||
+          (f.category && f.category.toLowerCase().includes(search.toLowerCase()))
+      )
+    : draft;
+
+  const activeCount = draft.filter((f) => f.active !== false).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header Info */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-white">FAQ Questions Manager</h2>
+            <p className="mt-1 text-xs text-gray-400">
+              Manage the Frequently Asked Questions shown on your portfolio. You have{" "}
+              <span className="font-semibold text-accent">{activeCount} active</span> out of{" "}
+              <span className="font-semibold text-white">{draft.length} total</span> questions.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={addItem}
+            className="rounded-full bg-accent px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300"
+          >
+            + Add Question
+          </button>
+        </div>
+      </div>
+
+      {/* Filter / Search Bar */}
+      {draft.length > 3 && (
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search questions or categories..."
+            className="w-full rounded-lg border border-white/10 bg-neutral-900 px-3.5 py-2 text-xs text-white placeholder-gray-600 outline-none transition-colors focus:border-accent"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="shrink-0 text-xs text-gray-400 hover:text-white"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* FAQ items list */}
+      <div className="space-y-4">
+        {filtered.map((item) => {
+          const actualIndex = draft.findIndex((d) => d.id === item.id);
+          const isExpanded = expandedId === item.id;
+          const isActive = item.active !== false;
+
+          return (
+            <div
+              key={item.id}
+              className={`rounded-xl border transition-all duration-200 ${
+                isExpanded
+                  ? "border-accent/40 bg-white/[0.04] shadow-[0_0_20px_rgba(255,193,7,0.05)]"
+                  : "border-white/10 bg-white/[0.02] hover:border-white/20"
+              }`}
+            >
+              {/* Summary Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-accent">
+                    {String(actualIndex + 1).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                      className="text-left font-display text-sm font-bold text-white hover:text-accent transition-colors truncate block w-full"
+                    >
+                      {item.q || "(Untitled Question)"}
+                    </button>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      {item.category && (
+                        <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                          {item.category}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-gray-500 truncate max-w-md hidden sm:inline">
+                        {item.a ? item.a.slice(0, 70) + (item.a.length > 70 ? "…" : "") : "(no answer yet)"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Action buttons */}
+                <div className="flex items-center gap-2">
+                  {/* Active/Hidden Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => updateItem(item.id, { active: !isActive })}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      isActive
+                        ? "bg-accent text-black shadow-[0_0_8px_rgba(255,193,7,0.3)]"
+                        : "border border-white/15 text-gray-500 hover:border-white/30 hover:text-gray-300"
+                    }`}
+                  >
+                    {isActive ? "● Active" : "○ Hidden"}
+                  </button>
+
+                  {/* Expand/Collapse Button */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent"
+                  >
+                    {isExpanded ? "Collapse" : "Edit"}
+                  </button>
+
+                  {/* Reorder Buttons */}
+                  <ReorderButtons
+                    index={actualIndex}
+                    total={draft.length}
+                    onMove={(dir) => moveItem(item.id, dir)}
+                  />
+
+                  {/* Delete Button */}
+                  <DeleteButton small onDelete={() => removeItem(item.id)} />
+                </div>
+              </div>
+
+              {/* Editable Fields Form */}
+              {isExpanded && (
+                <div className="border-t border-white/10 p-5 space-y-4 bg-black/30">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="sm:col-span-2">
+                      <TextInput
+                        label="Question"
+                        value={item.q}
+                        onChange={(v) => updateItem(item.id, { q: v })}
+                        hint="Keep questions direct and clear"
+                      />
+                    </div>
+                    <div>
+                      <TextInput
+                        label="Category"
+                        value={item.category || ""}
+                        onChange={(v) => updateItem(item.id, { category: v })}
+                        hint="e.g. Tech Stack, Pricing, Process"
+                      />
+                    </div>
+                  </div>
+
+                  <TextArea
+                    label="Answer"
+                    value={item.a}
+                    onChange={(v) => updateItem(item.id, { a: v })}
+                    rows={4}
+                    hint="Provide a helpful, professional explanation"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add New Button */}
+      <button
+        type="button"
+        onClick={addItem}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 py-3.5 text-sm font-semibold text-gray-400 transition-all hover:border-accent/50 hover:text-accent"
+      >
+        <span className="text-lg leading-none">+</span>
+        Add Another FAQ Question
+      </button>
+
+      <SaveBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} />
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  ExperienceTab                                                      */
+/* ================================================================== */
+
+export function ExperienceTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [draft, setDraft] = useState<ExperienceItem[]>(() => content.experiences || DEFAULT_EXPERIENCES);
+  const [showSection, setShowSection] = useState<boolean>(content.settings.showExperience !== false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const dirty =
+    JSON.stringify(draft) !== JSON.stringify(content.experiences || DEFAULT_EXPERIENCES) ||
+    showSection !== (content.settings.showExperience !== false);
+
+  const addItem = () => {
+    const newItem: ExperienceItem = {
+      id: uid(),
+      role: "New Position / Role",
+      company: "Company Name",
+      period: "2024 - Present",
+      location: "Remote",
+      type: "Full-time",
+      description: "Describe key responsibilities, achievements, and technical scope...",
+      technologies: ["React", "TypeScript", "Node.js"],
+      active: true,
+    };
+    setDraft([...draft, newItem]);
+    setExpandedId(newItem.id);
+  };
+
+  const updateItem = (id: string, patch: Partial<ExperienceItem>) => {
+    setDraft(draft.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  };
+
+  const removeItem = (id: string) => {
+    setDraft(draft.filter((it) => it.id !== id));
+    toast("Experience item deleted");
+  };
+
+  const moveItem = (id: string, direction: "top" | "up" | "down" | "bottom") => {
+    const idx = draft.findIndex((it) => it.id === id);
+    if (idx === -1) return;
+    const list = [...draft];
+    const [item] = list.splice(idx, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, idx - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, idx + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setDraft(list);
+  };
+
+  const handleSave = () => {
+    updateSection("experiences", draft);
+    updateSection("settings", { ...content.settings, showExperience: showSection });
+    toast("Work experience saved");
+  };
+
+  const handleDiscard = () => {
+    setDraft(content.experiences || DEFAULT_EXPERIENCES);
+    setShowSection(content.settings.showExperience !== false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header & Global Switch */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
+              <span>Work Experience &amp; Career History</span>
+              <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-bold text-accent">
+                {draft.length} items
+              </span>
+            </h2>
+            <p className="mt-1 text-xs text-gray-400">
+              Showcase your employment history, client roles, and companies you have worked for.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowSection(!showSection)}
+              className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                showSection
+                  ? "bg-accent text-black shadow-[0_0_15px_rgba(255,193,7,0.35)]"
+                  : "border border-white/20 text-gray-400 hover:border-white/40 hover:text-white"
+              }`}
+            >
+              {showSection ? "● Section Active" : "○ Section Hidden"}
+            </button>
+            <button
+              type="button"
+              onClick={addItem}
+              className="rounded-full bg-accent px-4 py-2 text-xs font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300 hover:shadow-[0_4px_20px_rgba(255,193,7,0.3)]"
+            >
+              + Add Experience
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Items List */}
+      <div className="space-y-4">
+        {draft.map((item, idx) => {
+          const isExpanded = expandedId === item.id;
+          const isActive = item.active !== false;
+
+          return (
+            <div
+              key={item.id}
+              className={`rounded-xl border transition-all ${
+                isExpanded
+                  ? "border-accent/40 bg-white/[0.04] shadow-[0_0_20px_rgba(255,193,7,0.05)]"
+                  : "border-white/10 bg-white/[0.02] hover:border-white/20"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
+                    #{idx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                      className="text-left font-display text-sm font-bold text-white hover:text-accent transition-colors truncate block w-full"
+                    >
+                      {item.role || "(Untitled Role)"} · <span className="text-gray-400 font-normal">{item.company || "(Company)"}</span>
+                    </button>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                      <span className="text-accent font-medium">{item.period}</span>
+                      {item.type && <span>· {item.type}</span>}
+                      {item.location && <span>· {item.location}</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateItem(item.id, { active: !isActive })}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      isActive
+                        ? "bg-accent text-black shadow-[0_0_8px_rgba(255,193,7,0.3)]"
+                        : "border border-white/15 text-gray-500 hover:border-white/30 hover:text-gray-300"
+                    }`}
+                  >
+                    {isActive ? "● Active" : "○ Hidden"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent"
+                  >
+                    {isExpanded ? "Collapse" : "Edit"}
+                  </button>
+
+                  <ReorderButtons
+                    index={idx}
+                    total={draft.length}
+                    onMove={(dir) => moveItem(item.id, dir)}
+                  />
+
+                  <DeleteButton small onDelete={() => removeItem(item.id)} />
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="border-t border-white/10 p-5 space-y-4 bg-black/30">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <TextInput
+                      label="Job Title / Role"
+                      value={item.role}
+                      onChange={(v) => updateItem(item.id, { role: v })}
+                      placeholder="Senior Full Stack Engineer"
+                    />
+                    <TextInput
+                      label="Company / Client"
+                      value={item.company}
+                      onChange={(v) => updateItem(item.id, { company: v })}
+                      placeholder="Tech Venture Studio"
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <TextInput
+                      label="Period / Dates"
+                      value={item.period}
+                      onChange={(v) => updateItem(item.id, { period: v })}
+                      placeholder="2023 - Present"
+                    />
+                    <TextInput
+                      label="Location"
+                      value={item.location || ""}
+                      onChange={(v) => updateItem(item.id, { location: v })}
+                      placeholder="Remote / Worldwide"
+                    />
+                    <TextInput
+                      label="Employment Type"
+                      value={item.type || ""}
+                      onChange={(v) => updateItem(item.id, { type: v })}
+                      placeholder="Full-time / Contract"
+                    />
+                  </div>
+                  <TextArea
+                    label="Description"
+                    value={item.description}
+                    onChange={(v) => updateItem(item.id, { description: v })}
+                    rows={3}
+                    hint="Use [br] for a line break, [br][br] for a paragraph gap, [x]text[/x] for yellow highlight, [b]bold[/b], or [badge]tag[/badge]."
+                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <TextInput
+                      label="Technologies (comma separated)"
+                      value={item.technologies.join(", ")}
+                      onChange={(v) =>
+                        updateItem(item.id, {
+                          technologies: v.split(",").map((s) => s.trim()).filter(Boolean),
+                        })
+                      }
+                      placeholder="React, Next.js, Node.js, TypeScript"
+                    />
+                    <TextInput
+                      label="Company / Project URL (optional)"
+                      value={item.link || ""}
+                      onChange={(v) => updateItem(item.id, { link: v })}
+                      placeholder="https://company.com"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={addItem}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 py-3.5 text-sm font-semibold text-gray-400 transition-all hover:border-accent/50 hover:text-accent"
+      >
+        <span className="text-lg leading-none">+</span>
+        Add Another Work Experience
+      </button>
+
+      <SaveBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} />
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  CertificationsTab                                                  */
+/* ================================================================== */
+
+export function CertificationsTab() {
+  const { content, updateSection } = useContent();
+  const toast = useToast();
+  const [draft, setDraft] = useState<CertificationItem[]>(() => content.certifications || DEFAULT_CERTIFICATIONS);
+  const [showSection, setShowSection] = useState<boolean>(content.settings.showCertifications !== false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const dirty =
+    JSON.stringify(draft) !== JSON.stringify(content.certifications || DEFAULT_CERTIFICATIONS) ||
+    showSection !== (content.settings.showCertifications !== false);
+
+  const addItem = () => {
+    const newItem: CertificationItem = {
+      id: uid(),
+      title: "New Certification Title",
+      issuer: "Issuing Organization (e.g. Google, Meta)",
+      issueDate: "2024",
+      credentialUrl: "https://",
+      credentialId: "",
+      active: true,
+    };
+    setDraft([...draft, newItem]);
+    setExpandedId(newItem.id);
+  };
+
+  const updateItem = (id: string, patch: Partial<CertificationItem>) => {
+    setDraft(draft.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  };
+
+  const removeItem = (id: string) => {
+    setDraft(draft.filter((it) => it.id !== id));
+    toast("Certification item deleted");
+  };
+
+  const moveItem = (id: string, direction: "top" | "up" | "down" | "bottom") => {
+    const idx = draft.findIndex((it) => it.id === id);
+    if (idx === -1) return;
+    const list = [...draft];
+    const [item] = list.splice(idx, 1);
+    switch (direction) {
+      case "top": list.unshift(item); break;
+      case "up": list.splice(Math.max(0, idx - 1), 0, item); break;
+      case "down": list.splice(Math.min(list.length, idx + 1), 0, item); break;
+      case "bottom": list.push(item); break;
+    }
+    setDraft(list);
+  };
+
+  const handleSave = () => {
+    updateSection("certifications", draft);
+    updateSection("settings", { ...content.settings, showCertifications: showSection });
+    toast("Certifications saved");
+  };
+
+  const handleDiscard = () => {
+    setDraft(content.certifications || DEFAULT_CERTIFICATIONS);
+    setShowSection(content.settings.showCertifications !== false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header & Global Switch */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
+              <span>Certifications &amp; Licenses</span>
+              <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-bold text-accent">
+                {draft.length} credentials
+              </span>
+            </h2>
+            <p className="mt-1 text-xs text-gray-400">
+              Display industry credentials, professional qualifications, and verified honors.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* One-click global toggle */}
+            <button
+              type="button"
+              onClick={() => setShowSection(!showSection)}
+              className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                showSection
+                  ? "bg-accent text-black shadow-[0_0_15px_rgba(255,193,7,0.35)]"
+                  : "border border-white/20 text-gray-400 hover:border-white/40 hover:text-white"
+              }`}
+            >
+              {showSection ? "● Section Active" : "○ Section Hidden"}
+            </button>
+            <button
+              type="button"
+              onClick={addItem}
+              className="rounded-full bg-accent px-4 py-2 text-xs font-bold uppercase tracking-wider text-black transition-all hover:bg-yellow-300 hover:shadow-[0_4px_20px_rgba(255,193,7,0.3)]"
+            >
+              + Add Certification
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Items List */}
+      <div className="space-y-4">
+        {draft.map((item, idx) => {
+          const isExpanded = expandedId === item.id;
+          const isActive = item.active !== false;
+
+          return (
+            <div
+              key={item.id}
+              className={`rounded-xl border transition-all ${
+                isExpanded
+                  ? "border-accent/40 bg-white/[0.04] shadow-[0_0_20px_rgba(255,193,7,0.05)]"
+                  : "border-white/10 bg-white/[0.02] hover:border-white/20"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
+                    #{idx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                      className="text-left font-display text-sm font-bold text-white hover:text-accent transition-colors truncate block w-full"
+                    >
+                      {item.title || "(Untitled Certification)"}
+                    </button>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                      <span className="text-gray-300">{item.issuer || "(Issuer)"}</span>
+                      {item.issueDate && <span>· Issued {item.issueDate}</span>}
+                      {item.credentialId && <span>· ID: {item.credentialId}</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => updateItem(item.id, { active: !isActive })}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      isActive
+                        ? "bg-accent text-black shadow-[0_0_8px_rgba(255,193,7,0.3)]"
+                        : "border border-white/15 text-gray-500 hover:border-white/30 hover:text-gray-300"
+                    }`}
+                  >
+                    {isActive ? "● Active" : "○ Hidden"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-300 transition-colors hover:border-accent hover:text-accent"
+                  >
+                    {isExpanded ? "Collapse" : "Edit"}
+                  </button>
+
+                  <ReorderButtons
+                    index={idx}
+                    total={draft.length}
+                    onMove={(dir) => moveItem(item.id, dir)}
+                  />
+
+                  <DeleteButton small onDelete={() => removeItem(item.id)} />
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="border-t border-white/10 p-5 space-y-4 bg-black/30">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <TextInput
+                      label="Certification / Credential Title"
+                      value={item.title}
+                      onChange={(v) => updateItem(item.id, { title: v })}
+                      placeholder="Meta Certified Full-Stack Developer"
+                    />
+                    <TextInput
+                      label="Issuing Organization"
+                      value={item.issuer}
+                      onChange={(v) => updateItem(item.id, { issuer: v })}
+                      placeholder="Meta / Google / DeepLearning.AI"
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <TextInput
+                      label="Issue Date / Year"
+                      value={item.issueDate}
+                      onChange={(v) => updateItem(item.id, { issueDate: v })}
+                      placeholder="2024"
+                    />
+                    <TextInput
+                      label="Credential ID / License #"
+                      value={item.credentialId || ""}
+                      onChange={(v) => updateItem(item.id, { credentialId: v })}
+                      placeholder="e.g. CERT-98214"
+                    />
+                    <TextInput
+                      label="Verification URL"
+                      value={item.credentialUrl || ""}
+                      onChange={(v) => updateItem(item.id, { credentialUrl: v })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <ImagePicker
+                    label="Badge / Certificate Image (optional)"
+                    value={item.badgeImage || ""}
+                    onChange={(v) => updateItem(item.id, { badgeImage: v })}
+                    hint="Optional certificate emblem or verification badge preview."
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={addItem}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 py-3.5 text-sm font-semibold text-gray-400 transition-all hover:border-accent/50 hover:text-accent"
+      >
+        <span className="text-lg leading-none">+</span>
+        Add Another Certification
+      </button>
+
+      <SaveBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} />
+    </div>
+  );
+}

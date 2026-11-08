@@ -1,0 +1,374 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-accent: #ffc107;
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-float-slow: float 9s ease-in-out infinite;
+  --animate-spin-slow: spin-slow 16s linear infinite;
+  --animate-fade-up: fade-up 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-bounce-soft: bounce-soft 2.2s ease-in-out infinite;
+  --animate-pop-in: pop-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-admin-fade-slide: admin-fade-slide 0.3s ease-out both;
+  --animate-shimmer: shimmer 1.5s infinite;
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-16px);
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce-soft {
+
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+
+  50% {
+    transform: translateY(9px);
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes admin-fade-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes aurora-1 {
+
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.04;
+  }
+
+  50% {
+    transform: translate3d(50px, 30px, 0) scale(1.18);
+    opacity: 0.08;
+  }
+}
+
+@keyframes aurora-2 {
+
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.035;
+  }
+
+  50% {
+    transform: translate3d(-40px, -25px, 0) scale(1.15);
+    opacity: 0.07;
+  }
+}
+
+@keyframes text-shimmer {
+  0% {
+    background-position: 0% center;
+  }
+
+  100% {
+    background-position: 200% center;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5.5rem;
+}
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+::selection {
+  background-color: #ffc107;
+  color: #000000;
+}
+
+/* Site-wide Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b2b2b #050505;
+}
+
+::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  background: #2b2b2b;
+  border-radius: 99px;
+  border: 1px solid #050505;
+}
+
+::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background: #ffc107;
+}
+
+::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Modal and Accent Scrollbar (for Project Modal, Galleries, Dialogs) */
+.modal-scrollbar,
+.custom-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: #ffc107 #0a0a0a !important;
+}
+
+.modal-scrollbar::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.modal-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0a0a0a !important;
+  border-radius: 9999px !important;
+}
+
+.modal-scrollbar::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #ffc107 !important;
+  border-radius: 9999px !important;
+  border: 1px solid #0a0a0a !important;
+}
+
+.modal-scrollbar::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #ffd54f !important;
+}
+
+.modal-scrollbar::-webkit-scrollbar-button,
+.custom-scrollbar::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Thin Scrollbar for inner panels (admin sidebar, pickers, modals, strips).
+   Main page scrollbar stays as-is; only elements with this class get thinner. */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #2b2b2b transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #2b2b2b !important;
+  border-radius: 9999px !important;
+  border: none !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #3d3d3d !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity 0.8s ease,
+    transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   CUSTOM THEME CURSORS (Arrow Pointer & Hand Pointer)
+   --------------------------------------------------------------------------
+   SIZE CONTROL:
+     Default cursor  → change width/height in /public/cursor-default.svg
+                        (currently 38x38, viewBox "5 5 16 16")
+     Pointer cursor  → change width/height in /public/cursor-pointer.svg
+                        (currently 26x26)
+   ========================================================================== */
+
+/* 1. Default site-wide custom arrow cursor */
+html,
+body,
+*,
+*::before,
+*::after {
+  cursor: url('/cursor-default.svg') 7 7, auto;
+}
+
+/* 2. Interactive / Clickable elements get custom hand cursor
+      !important ensures it always wins over text-element rules below */
+a,
+a *,
+button,
+button *,
+[role="button"],
+[role="button"] *,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+select,
+summary,
+.cursor-pointer,
+.cursor-pointer * {
+  cursor: url('/cursor-pointer.svg') 11 1, pointer !important;
+}
+
+/* 3. Text elements: Keep custom arrow cursor (NO I-beam)
+      No !important here so interactive parents (section 2) always win */
+p,
+span,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+li,
+dt,
+dd,
+blockquote,
+label,
+time,
+strong,
+em,
+b,
+i,
+code,
+pre,
+article,
+section {
+  cursor: url('/cursor-default.svg') 7 7, default;
+}
+
+/* 4. Text inputs allow text cursor for typing */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="search"],
+textarea {
+  cursor: text !important;
+}
+

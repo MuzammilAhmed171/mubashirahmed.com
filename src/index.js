@@ -1,0 +1,91 @@
+/* Portfolio API bootstrap.
+   Wires up Express, connects to MongoDB and mounts every route under /api. */
+
+const path = require("path");
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+
+const config = require("./config/env");
+const { connectDB } = require("./config/db");
+const routes = require("./routes");
+const { uploadsDir } = require("./middleware/upload.middleware");
+const { notFound, errorHandler } = require("./middleware/error.middleware");
+
+const app = express();
+
+/* Security + CORS + parsing */
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
+});
+
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(cors({ origin: "*", credentials: false }));
+app.use(express.json({ limit: "15mb" })); // large limit so uploaded data-URLs fit
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+
+/* Request logging in development */
+if (config.env !== "production") {
+  app.use(morgan("dev"));
+}
+
+/* Uploaded files are served statically */
+app.use("/uploads", express.static(uploadsDir));
+
+/* Ensure DB is connected before handling API requests (for serverless environments like Vercel) */
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error("[db] Middleware connection error:", err.message);
+    if (req.originalUrl.startsWith("/api")) {
+      return res.status(500).json({ error: "Database connection failed. Please check MongoDB Atlas access." });
+    }
+    next();
+  }
+});
+
+/* Root health route */
+app.get("/", (req, res) => {
+  res.json({ message: "Portfolio API is running successfully on Vercel!", status: "online" });
+});
+
+/* API routes */
+app.use("/api", routes);
+
+/* Serve the built frontend if it exists (optional single-server deploy) */
+const clientDist = path.join(__dirname, "..", "..", "dist");
+app.use(express.static(clientDist));
+app.get("*", (req, res, next) => {
+  if (req.originalUrl.startsWith("/api")) return next();
+  res.sendFile(path.join(clientDist, "index.html"), (err) => {
+    if (err) next();
+  });
+});
+
+/* Error handling */
+app.use(notFound);
+app.use(errorHandler);
+
+async function start() {
+  await connectDB();
+  app.listen(config.port, () => {
+    console.log(`\n[api] Portfolio API listening on port ${config.port}`);
+    console.log(`[api] Environment: ${config.env}`);
+    console.log(`[api] SMTP: ${config.smtp.enabled ? "configured" : "not configured (OTP logged to console)"}\n`);
+  });
+}
+
+if (require.main === module) {
+  start();
+}
+
+module.exports = app;
